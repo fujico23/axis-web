@@ -35,6 +35,7 @@ model User {
   sessions      Session[]
   accounts      Account[]
   client        Client?
+  cases         Case[]
 
   @@unique([email])
   @@map("users")
@@ -101,8 +102,9 @@ model Client {
   userId                String     @unique @map("user_id")
   user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  // 顧客識別番号: 西暦下2桁+月日+該当日付の登録順3桁 (例: 251017002)
-  customerIdentifier    String     @map("customer_identifier")
+  // 顧客番号: MJ + 4桁の番号 (例: MJ0001)
+  // アカウント作成時に自動発行される
+  customerNumber        String     @unique @map("customer_number")
   
   clientType            ClientType @default(INDIVIDUAL) @map("client_type")
   
@@ -118,6 +120,112 @@ model Client {
   createdAt             DateTime   @default(now()) @map("created_at")
   updatedAt             DateTime   @updatedAt @map("updated_at")
 
-  @@index([customerIdentifier])
+  @@index([customerNumber])
   @@map("clients")
+}
+
+// ============================================
+// 商標案件管理
+// ============================================
+
+enum TrademarkType {
+  TEXT          // 文字商標
+  LOGO          // ロゴ・図形商標
+}
+
+enum ConsultationRoute {
+  AI_SELF_SERVICE          // AI活用型（簡易型）: LLM主導での調査・願書作成
+  ATTORNEY_CONSULTATION     // 弁理士相談型: 弁理士が直接対応・詳細調査
+}
+
+enum CaseStatus {
+  DRAFT                           // 下書き
+  TRADEMARK_REGISTERED            // 新規商標済
+  PRELIMINARY_RESEARCH_IN_PROGRESS // 事前調査中
+  RESEARCH_RESULT_SHARED          // 調査結果共有
+  PREPARING_APPLICATION           // 出願準備中(入金済)
+  APPLICATION_CONFIRMED           // 願書確定
+  APPLICATION_SUBMITTED           // 出願受付済
+  UNDER_EXAMINATION               // 審査中
+  OA_RECEIVED                     // OA受領
+  RESPONDING_TO_OA                // 中間対応中
+  FINAL_RESULT_RECEIVED           // 最終結果受領
+  PAYING_REGISTRATION_FEE         // 登録料納付中
+  REGISTRATION_COMPLETED           // 登録完了
+  AWAITING_RENEWAL                 // 更新待ち
+  IN_DISPUTE                       // 係争中(異議申立・無効審判等)
+  REJECTED                         // 拒絶確定
+  ABANDONED                        // 放棄
+}
+
+model Case {
+  id                    String      @id @default(cuid())
+  
+  // 整理番号: MJ + 顧客番号 + 顧客の通し番号 (例: MJ00010001)
+  // 案件作成時に自動発行される
+  caseNumber            String      @unique @map("case_number")
+  
+  // 顧客ごとの通し番号（4桁）
+  // 同じ顧客の案件が増えるたびにインクリメントされる
+  sequenceNumber        Int         @default(1) @map("sequence_number")
+  
+  // 基本情報
+  title                 String
+  trademarkType         TrademarkType @map("trademark_type")
+  applicant             String
+  classes               String[]      // 区分コードの配列（例: ["1", "42"]）
+  
+  // 商標情報（Json形式で保存）
+  // 文字商標の場合: { text: string, reading: string }
+  // ロゴ・図形商標の場合: { imageData: string, logoText?: string, logoTextReading?: string }
+  trademarkDetails      Json        @map("trademark_details")
+  
+  // 区分選択情報（Json形式で保存）
+  // AiClassSelection[]: [{ classCode: string, details: string[] }]
+  // 登録区分（カテゴリ）と具体的な区分を含む
+  classSelections       Json?       @map("class_selections")
+  
+  // 登録区分カテゴリ（商品・サービス、商品、サービス）
+  classCategory         String?     @map("class_category")
+  
+  // 商品・サービス情報
+  productService        String?     @map("product_service")
+  
+  // ステータス
+  status                CaseStatus  @default(DRAFT)
+  
+  // 相談ルート（AI活用型 or 弁理士相談型）
+  consultationRoute     ConsultationRoute? @map("consultation_route")
+  consultationStarted   Boolean     @default(false) @map("consultation_started")
+  
+  // 申込情報（Json形式で保存）
+  // 出願人情報、連絡先情報などを含む
+  clientIntake          Json?       @map("client_intake")
+  
+  // メモ
+  notes                 String?
+  
+  // クライアント（案件作成者）
+  userId                String      @map("user_id")
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 出願情報
+  applicationNumber     String?     @map("application_number")
+  applicationDate       DateTime?   @map("application_date")
+  
+  // 登録情報
+  registrationNumber    String?     @map("registration_number")
+  registrationDate      DateTime?   @map("registration_date")
+  
+  // 論理削除
+  deletedAt             DateTime?   @map("deleted_at")
+  
+  createdAt             DateTime    @default(now()) @map("created_at")
+  updatedAt             DateTime    @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([status])
+  @@index([caseNumber])
+  @@index([deletedAt])
+  @@map("cases")
 }
