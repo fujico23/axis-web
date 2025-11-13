@@ -32,7 +32,7 @@ const getSidebarItems = (userRole: string | undefined) => {
   return items;
 };
 
-export default function ClientLayout({
+export default function AdminCasesLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
@@ -201,7 +201,7 @@ export default function ClientLayout({
           </div>
         </div>
       </header>
-      <div className="flex-1 flex bg-gradient-to-br from-[#8EBA43]/5 via-white to-[#4d9731]/5 dark:from-[#2A3132] dark:via-[#2A3132]/95 dark:to-[#4d9731]/10 pt-[73px]">
+      <div className="flex-1 flex bg-gradient-to-br from-[#8EBA43]/5 via-white to-[#4d9731]/5 dark:from-[#2A3132] dark:from-[#2A3132]/95 dark:to-[#4d9731]/10 pt-[73px]">
         {/* サイドバー */}
         <aside className="fixed top-[73px] left-0 bottom-0 w-56 border-r border-[#8EBA43]/30 dark:border-[#4d9731]/40 bg-white/80 dark:bg-[#2A3132]/80 backdrop-blur overflow-y-auto">
           <nav className="p-4 space-y-2">
