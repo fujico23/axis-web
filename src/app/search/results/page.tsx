@@ -1,9 +1,17 @@
 'use client';
 
-import { ArrowLeft, Search } from 'lucide-react';
+import { ArrowLeft, LogIn, Search } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useMemo } from 'react';
+import { Suspense, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { NICE_CLASS_OPTIONS } from '@/lib/trademark-classes';
 import {
   BASE_APPLICATION_PRICE,
@@ -13,10 +21,14 @@ import {
   ADDITIONAL_CLASS_FEE,
 } from '@/lib/pricing';
 import { normalizeUiConsultationRoute } from '@/lib/consultation-route';
+import { useUser } from '@/lib/useUser';
 
 function SearchResultsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user, loading: userLoading } = useUser();
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const [isCreatingCase, setIsCreatingCase] = useState(false);
 
   const trademark = searchParams.get('standard_character') || '';
   const yomi = searchParams.get('yomi') || '';
@@ -34,6 +46,11 @@ function SearchResultsContent() {
     consultationRouteParam
   );
   const isAttorneyConsultation = consultationRoute === 'attorney_consultation';
+  
+  // 区分選択関連のパラメータ
+  const classCategoryParam = searchParams.get('class_category') || '';
+  const classCategoryDetailParam = searchParams.get('class_category_detail') || '';
+  const productServiceParam = searchParams.get('product_service') || '';
 
   // 価格計算
   const applicationFee = isAttorneyConsultation
@@ -45,6 +62,137 @@ function SearchResultsContent() {
       ? (selectedClasses.length - 1) * ADDITIONAL_CLASS_FEE
       : 0;
   const totalPrice = applicationFee + stampFee + additionalClassesFee;
+
+  // Case作成処理
+  const handleCreateCase = async () => {
+    if (userLoading) {
+      return;
+    }
+
+    if (!user) {
+      // 未ログインの場合はログインモーダルを表示
+      setShowLoginDialog(true);
+      return;
+    }
+
+    setIsCreatingCase(true);
+
+    try {
+      // 商標情報を構築
+      const trademarkDetails: Record<string, string> = {};
+      if (isLogoTrademark) {
+        if (trademarkImageParam) {
+          trademarkDetails.imageData = trademarkImageParam;
+        }
+        if (logoHasTextParam === 'あり' && trademark) {
+          trademarkDetails.logoText = trademark;
+          if (yomi) {
+            trademarkDetails.logoTextReading = yomi;
+          }
+        }
+      } else {
+        if (trademark) {
+          trademarkDetails.text = trademark;
+        }
+        if (yomi) {
+          trademarkDetails.reading = yomi;
+        }
+      }
+
+      // タイトルを生成
+      const title = trademark || (isLogoTrademark ? 'ロゴ・図形商標' : '新規商標');
+
+      // 出願人（仮の値、後で基本情報入力画面で更新）
+      const applicant = '未入力';
+
+      // 区分選択情報を構築（区分コードのみの場合、detailsは空配列）
+      const classSelections = selectedClasses.map((classCode) => ({
+        classCode,
+        details: [],
+      }));
+
+      // Case作成APIを呼び出し
+      const response = await fetch('/api/cases', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          title,
+          trademarkType: isLogoTrademark ? 'LOGO' : 'TEXT',
+          applicant,
+          classes: selectedClasses,
+          trademarkDetails,
+          classSelections: classSelections.length > 0 ? classSelections : undefined,
+          classCategory: classCategoryParam || undefined,
+          productService: productServiceParam || undefined,
+          consultationRoute: isAttorneyConsultation
+            ? 'ATTORNEY_CONSULTATION'
+            : 'AI_SELF_SERVICE',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        const message =
+          errorData?.error?.message ?? '案件の作成に失敗しました';
+        alert(message);
+        return;
+      }
+
+      const result = await response.json();
+      if (result.success && result.data) {
+        // 基本情報入力画面に遷移（Case IDをクエリパラメータで渡す）
+        const targetPath = '/client/cases/new';
+        const url = new URL(targetPath, window.location.origin);
+        url.searchParams.set('caseId', result.data.id);
+
+        // 検索パラメータも引き継ぐ
+        if (trademark) {
+          url.searchParams.set('standard_character', trademark);
+        }
+        if (yomi) {
+          url.searchParams.set('yomi', yomi);
+        }
+        if (selectedClasses.length > 0) {
+          url.searchParams.set(
+            'selected_simgroup_ids',
+            selectedClasses.join(',')
+          );
+        }
+        if (trademarkTypeParam) {
+          url.searchParams.set('type', trademarkTypeParam);
+        }
+        if (
+          logoHasTextParam === 'あり' ||
+          logoHasTextParam === 'なし'
+        ) {
+          url.searchParams.set('logo_has_text', logoHasTextParam);
+        }
+        if (isLogoTrademark && trademarkImageParam) {
+          url.searchParams.set('trademark_image', trademarkImageParam);
+        }
+        if (consultationRouteParam) {
+          url.searchParams.set('consultation_route', consultationRouteParam);
+        }
+
+        router.push(`${url.pathname}${url.search}`);
+      }
+    } catch (error) {
+      console.error('Failed to create case:', error);
+      alert('案件の作成中にエラーが発生しました');
+    } finally {
+      setIsCreatingCase(false);
+    }
+  };
+
+  const handleLoginRedirect = () => {
+    // 現在のページURLを保存してログインページへ遷移
+    const currentPath = window.location.pathname + window.location.search;
+    localStorage.setItem('redirectAfterLogin', currentPath);
+    router.push('/login');
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -198,53 +346,15 @@ function SearchResultsContent() {
 
                   {/* 出願ボタン */}
                   <Button
-                    onClick={() => {
-                      const targetPath =
-                        nextPath && nextPath.startsWith('/')
-                          ? nextPath
-                          : '/client/cases/new';
-
-                      const url = new URL(targetPath, window.location.origin);
-
-                      if (trademark) {
-                        url.searchParams.set('standard_character', trademark);
-                      }
-                      if (yomi) {
-                        url.searchParams.set('yomi', yomi);
-                      }
-                      if (selectedClasses.length > 0) {
-                        url.searchParams.set(
-                          'selected_simgroup_ids',
-                          selectedClasses.join(',')
-                        );
-                      }
-                      if (trademarkTypeParam) {
-                        url.searchParams.set('type', trademarkTypeParam);
-                      }
-                      if (
-                        logoHasTextParam === 'あり' ||
-                        logoHasTextParam === 'なし'
-                      ) {
-                        url.searchParams.set('logo_has_text', logoHasTextParam);
-                      }
-                      if (isLogoTrademark && trademarkImageParam) {
-                        url.searchParams.set(
-                          'trademark_image',
-                          trademarkImageParam
-                        );
-                      }
-                      if (consultationRouteParam) {
-                        url.searchParams.set(
-                          'consultation_route',
-                          consultationRouteParam
-                        );
-                      }
-
-                      router.push(`${url.pathname}${url.search}`);
-                    }}
-                    className="w-full py-4 text-base font-bold rounded-xl bg-gradient-to-r from-[#4d9731] to-[#8EBA43] text-white hover:shadow-xl transition-all duration-300"
+                    onClick={handleCreateCase}
+                    disabled={userLoading || isCreatingCase}
+                    className="w-full py-4 text-base font-bold rounded-xl bg-gradient-to-r from-[#4d9731] to-[#8EBA43] text-white hover:shadow-xl transition-all duration-300 disabled:opacity-50"
                   >
-                    この内容で出願準備を進める
+                    {userLoading
+                      ? '読込中...'
+                      : isCreatingCase
+                        ? '案件を作成中...'
+                        : 'この内容で出願準備を進める'}
                   </Button>
                 </div>
               </div>
@@ -326,6 +436,39 @@ function SearchResultsContent() {
           </div>
         </div>
       </div>
+
+      {/* ログイン促進ダイアログ */}
+      <Dialog open={showLoginDialog} onOpenChange={setShowLoginDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-[#2A3132] dark:text-[#8EBA43]">
+              <LogIn className="w-5 h-5" />
+              ログインが必要です
+            </DialogTitle>
+            <DialogDescription className="text-[#2A3132]/70 dark:text-[#8EBA43]/70">
+              商標出願を行うにはログインが必要です。
+              <br />
+              アカウントをお持ちでない場合は、新規登録をお願いします。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowLoginDialog(false)}
+              className="w-full sm:w-auto"
+            >
+              キャンセル
+            </Button>
+            <Button
+              onClick={handleLoginRedirect}
+              className="w-full sm:w-auto bg-gradient-to-r from-[#4d9731] to-[#8EBA43] text-white hover:shadow-lg"
+            >
+              <LogIn className="w-4 h-4 mr-2" />
+              ログイン / 新規登録
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

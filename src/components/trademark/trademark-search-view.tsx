@@ -776,7 +776,7 @@ export default function TrademarkSearchView({
             </div>
           </div>
 
-          <div className="flex justify-center pt-6">
+          <div className="flex flex-col items-center gap-4 pt-6">
             <Button
               onClick={handleSubmit}
               disabled={!canSearch}
@@ -784,6 +784,56 @@ export default function TrademarkSearchView({
             >
               <Search className="w-5 h-5 mr-2" />
               類似商標を検索
+            </Button>
+            <Button
+              onClick={() => {
+                if (onSelectConsultationRoute) {
+                  onSelectConsultationRoute('attorney_consultation');
+                }
+                setConsultationRoute('attorney_consultation');
+                // 弁理士相談ルートを選択した状態で検索を実行
+                const params = new URLSearchParams();
+                if (formData.trademarkText) {
+                  params.set('standard_character', formData.trademarkText);
+                }
+                if (formData.trademarkReading) {
+                  params.set('yomi', formData.trademarkReading);
+                }
+                if (formData.trademarkType) {
+                  params.set('type', formData.trademarkType);
+                }
+                if (formData.logoHasText) {
+                  params.set('logo_has_text', formData.logoHasText);
+                }
+                if (formData.classSelections && formData.classSelections.length > 0) {
+                  const classIds = formData.classSelections
+                    .map((selection) => selection.classCode)
+                    .join(',');
+                  params.set('selected_simgroup_ids', classIds);
+                }
+                if (formData.classCategory) {
+                  params.set('class_category', formData.classCategory);
+                }
+                if (formData.classCategoryDetail) {
+                  params.set('class_category_detail', formData.classCategoryDetail);
+                }
+                if (formData.productService) {
+                  params.set('product_service', formData.productService);
+                }
+                if (
+                  formData.trademarkType === 'ロゴ・図形商標' &&
+                  formData.trademarkImage
+                ) {
+                  params.set('trademark_image', formData.trademarkImage);
+                }
+                params.set('consultation_route', 'attorney_consultation');
+                onSubmit(params, formData);
+              }}
+              variant="outline"
+              className="px-8 py-3 text-sm font-semibold rounded-xl border-2 border-[#FD9731] text-[#FD9731] hover:bg-[#FD9731]/10 transition-all duration-300"
+            >
+              <UserCheck className="w-4 h-4 mr-2" />
+              区分選択に困ったら弁理士相談型へ！
             </Button>
           </div>
         </div>
