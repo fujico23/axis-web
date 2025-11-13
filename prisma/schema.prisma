@@ -1,0 +1,123 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// 認証・ユーザー管理
+// ============================================
+
+enum UserRole {
+  CLIENT          // クライアント
+  INTERNAL_STAFF  // 所内担当
+  ATTORNEY        // 弁理士
+  ADMIN           // 管理者
+}
+
+model User {
+  id            String    @id
+  name          String
+  email         String
+  emailVerified Boolean   @default(false) @map("email_verified")
+  image         String    @default("")
+  role          UserRole  @default(CLIENT)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+  
+  sessions      Session[]
+  accounts      Account[]
+  client        Client?
+
+  @@unique([email])
+  @@map("users")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime @map("expires_at")
+  token     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@map("sessions")
+}
+
+// OAuth(Google/GitHub ログイン)やパスワード認証用
+model Account {
+  id                    String    @id
+  accountId             String    @map("account_id")
+  providerId            String    @map("provider_id")
+  userId                String    @map("user_id")
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?   @map("access_token")
+  refreshToken          String?   @map("refresh_token")
+  idToken               String?   @map("id_token")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at")
+  scope                 String?
+  password              String?   // ハッシュ化されたパスワード（better-authが自動管理）
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@map("accounts")
+}
+
+// メール認証・パスワードリセット機能用
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("verifications")
+}
+
+// ============================================
+// 顧客情報
+// ============================================
+
+enum ClientType {
+  INDIVIDUAL   // 個人
+  CORPORATE    // 法人
+}
+
+model Client {
+  id                    String     @id @default(cuid())
+  userId                String     @unique @map("user_id")
+  user                  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 顧客識別番号: 西暦下2桁+月日+該当日付の登録順3桁 (例: 251017002)
+  customerIdentifier    String     @map("customer_identifier")
+  
+  clientType            ClientType @default(INDIVIDUAL) @map("client_type")
+  
+  // 法人情報（法人の場合のみ使用）
+  companyName           String     @default("") @map("company_name")
+  department            String     @default("")
+  position              String     @default("")
+  
+  // 共通情報
+  phoneNumber           String     @default("") @map("phone_number")
+  address               String     @default("")
+  
+  createdAt             DateTime   @default(now()) @map("created_at")
+  updatedAt             DateTime   @updatedAt @map("updated_at")
+
+  @@index([customerIdentifier])
+  @@map("clients")
+}
