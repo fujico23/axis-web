@@ -1,10 +1,11 @@
 'use client';
 
-import { ArrowLeft, FileText } from 'lucide-react';
+import { ArrowLeft, FileText, RotateCcw } from 'lucide-react';
 import { useRouter, useParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/lib/useUser';
+import { CaseProgressBar } from '@/components/case/progress-bar';
 
 function CaseDetailContent() {
   const router = useRouter();
@@ -80,21 +81,47 @@ function CaseDetailContent() {
           案件一覧に戻る
         </Button>
 
-        <div className="text-center space-y-3 mb-8">
-          <h1 className="text-3xl font-bold text-[#2A3132] dark:text-[#8EBA43]">
-            商標の詳細
-          </h1>
+        {/* 進捗バー */}
+        <div className="mb-6">
+          <CaseProgressBar currentStatus={caseData.status} />
         </div>
 
-        <div className="rounded-3xl border-2 border-[#8EBA43]/20 bg-white dark:bg-[#2A3132] p-8 shadow-lg">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#4d9731] to-[#8EBA43] flex items-center justify-center shadow-md">
-              <FileText className="w-6 h-6 text-white" />
+        {/* アクションボタン */}
+        <div className="mb-6 flex justify-center">
+          {caseData.status === 'DRAFT' && (
+            <Button
+              onClick={() => {
+                router.push(`/client/cases/new?caseId=${caseId}`);
+              }}
+              className="bg-gradient-to-r from-[#FD9731] to-[#f57c00] text-white hover:shadow-lg rounded-full px-8 py-6 text-base font-semibold"
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              検討再開
+            </Button>
+          )}
+          {/* TODO: 他のステータスに応じたアクションボタンを追加可能
+          例:
+          {caseData.status === 'PRELIMINARY_RESEARCH_IN_PROGRESS' && (
+            <Button>調査結果を確認</Button>
+          )}
+          {caseData.status === 'PREPARING_APPLICATION' && (
+            <Button>願書を確認</Button>
+          )}
+          */}
+        </div>
+
+        {/* レイアウト: 商標情報を右寄せに配置 */}
+        <div className="flex justify-end">
+          {/* 商標情報 */}
+          <div className="w-96 rounded-3xl border-2 border-[#8EBA43]/20 bg-white dark:bg-[#2A3132] p-8 shadow-lg">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#4d9731] to-[#8EBA43] flex items-center justify-center shadow-md">
+                <FileText className="w-6 h-6 text-white" />
+              </div>
+              <h2 className="text-2xl font-bold text-[#2A3132] dark:text-[#8EBA43]">
+                商標情報
+              </h2>
             </div>
-            <h2 className="text-2xl font-bold text-[#2A3132] dark:text-[#8EBA43]">
-              案件情報
-            </h2>
-          </div>
 
           <div className="space-y-6">
             <div>
@@ -112,15 +139,6 @@ function CaseDetailContent() {
               </p>
               <p className="text-lg font-semibold text-[#2A3132] dark:text-[#8EBA43]">
                 {caseData.title}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-sm text-[#2A3132]/60 dark:text-[#8EBA43]/60 mb-2">
-                ステータス
-              </p>
-              <p className="text-lg font-semibold text-[#2A3132] dark:text-[#8EBA43]">
-                {caseData.status}
               </p>
             </div>
 
@@ -149,6 +167,7 @@ function CaseDetailContent() {
               </div>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>
