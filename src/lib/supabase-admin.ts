@@ -11,7 +11,7 @@ export function getSupabaseAdminClient(): SupabaseClient {
   const supabaseUrl =
     process.env.SUPABASE_URL ||
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    "http://127.0.0.1:54341";
+    "http://127.0.0.1:54351";
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseServiceRoleKey) {

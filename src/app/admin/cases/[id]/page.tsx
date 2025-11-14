@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, FileText, Search, FileEdit, FileCode, MessageSquare, Receipt } from "lucide-react";
+import { ArrowLeft, FileText, Search, FileEdit, FileCode, MessageSquare, Receipt, Send, Flag, FlagOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/lib/useUser";
 
@@ -55,6 +57,15 @@ export default function AdminCaseDetailPage() {
   const [caseData, setCaseData] = useState<CaseData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState("overview");
+  
+  // メッセージ関連の状態
+  const [messages, setMessages] = useState<any[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [content, setContent] = useState("");
+  const [subject, setSubject] = useState("");
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const sections = [
     { id: "overview", label: "案件情報", icon: FileText },
@@ -126,6 +137,134 @@ export default function AdminCaseDetailPage() {
 
     fetchCase();
   }, [caseId, user, userLoading, router]);
+
+  // メッセージを取得
+  useEffect(() => {
+    if (!caseId || !user || userLoading || activeSection !== "communication") {
+      return;
+    }
+
+    const fetchMessages = async () => {
+      setMessagesLoading(true);
+      try {
+        const response = await fetch(`/api/messages/${caseId}`, {
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data) {
+            setMessages(data.data.messages || []);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch messages:", error);
+      } finally {
+        setMessagesLoading(false);
+      }
+    };
+
+    fetchMessages();
+  }, [caseId, user, userLoading, activeSection]);
+
+  useEffect(() => {
+    // メッセージが更新されたら一番上（最新メッセージ）にスクロール
+    if (activeSection === "communication" && messages.length > 0) {
+      // 最新メッセージは一番上にあるので、スクロール位置をリセット
+      const container = messagesEndRef.current?.parentElement;
+      if (container) {
+        container.scrollTop = 0;
+      }
+    }
+  }, [messages, activeSection]);
+
+  const handleSend = async () => {
+    if (!content.trim()) {
+      return;
+    }
+
+    setSending(true);
+    try {
+      const response = await fetch(`/api/messages/${caseId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          content: content.trim(),
+          subject: subject.trim() || null,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data) {
+          setMessages((prev) => [data.data.message, ...prev]);
+          setContent("");
+          setSubject("");
+          // 新しく送信したメッセージを選択状態にする
+          setSelectedMessageId(data.data.message.id);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to send message:", error);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleToggleFlag = async (messageId: string, currentFlagged: boolean) => {
+    try {
+      const response = await fetch(`/api/messages/${caseId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          messageId,
+          isFlagged: !currentFlagged,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === messageId
+                ? { ...m, isFlagged: !currentFlagged }
+                : m
+            )
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Failed to toggle flag:", error);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat("ja-JP", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
+  };
+
+  const getRoleLabel = (role: string) => {
+    const roleMap: Record<string, string> = {
+      CLIENT: "クライアント",
+      INTERNAL_STAFF: "所内担当",
+      ATTORNEY: "担当弁理士",
+      ADMIN: "管理者",
+    };
+    return roleMap[role] || role;
+  };
 
   // ローディング中または権限チェック中
   if (userLoading || loading) {
@@ -337,14 +476,177 @@ export default function AdminCaseDetailPage() {
 
         {/* 通信一覧セクション */}
         {activeSection === "communication" && (
-          <div className="rounded-2xl border border-border bg-card/80 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">通信一覧</h2>
-              <Button>新規メッセージ</Button>
+          <div className="rounded-2xl border border-border bg-card/80 flex flex-col h-[800px]">
+            {/* 入力欄を上に配置 */}
+            <div className="border-b border-border p-4 space-y-2 bg-muted/30 flex-shrink-0">
+              <Input
+                placeholder="件名（オプション）"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="text-sm"
+              />
+              <div className="flex gap-2">
+                <Textarea
+                  placeholder="メッセージを入力..."
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      handleSend();
+                    }
+                  }}
+                  className="flex-1 min-h-[100px]"
+                />
+                <Button
+                  onClick={handleSend}
+                  disabled={!content.trim() || sending}
+                  className="self-end"
+                >
+                  <Send className="w-4 h-4 mr-2" />
+                  送信
+                </Button>
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground">
-              通信一覧機能は今後実装予定です。
-            </p>
+
+            {/* メッセージ一覧と詳細の分割表示 */}
+            <div className="flex flex-1 overflow-hidden">
+              {/* メッセージリスト（左側） */}
+              <div className="w-1/2 border-r border-border overflow-y-auto">
+                {messagesLoading ? (
+                  <div className="text-center text-muted-foreground py-8">
+                    読み込み中...
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-8">
+                    まだメッセージがありません
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {messages.map((message) => {
+                      const isSelected = selectedMessageId === message.id;
+                      const preview = message.content.length > 100 
+                        ? message.content.substring(0, 100) + '...'
+                        : message.content;
+                      
+                      return (
+                        <div
+                          key={message.id}
+                          onClick={() => setSelectedMessageId(isSelected ? null : message.id)}
+                          className={`p-4 cursor-pointer hover:bg-muted/50 transition-colors ${
+                            isSelected ? 'bg-muted' : ''
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* フラグ */}
+                            <div className="flex-shrink-0 pt-0.5">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleFlag(message.id, message.isFlagged);
+                                }}
+                                className="hover:opacity-80 transition-opacity"
+                                type="button"
+                              >
+                                {message.isFlagged ? (
+                                  <Flag className="w-4 h-4 text-yellow-500" fill="currentColor" />
+                                ) : (
+                                  <FlagOff className="w-4 h-4 text-muted-foreground" />
+                                )}
+                              </button>
+                            </div>
+
+                            {/* メッセージ情報 */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-sm font-semibold text-foreground truncate">
+                                  {message.subject || '(件名なし)'}
+                                </span>
+                                <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">
+                                  {formatDate(message.createdAt)}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs text-muted-foreground truncate">
+                                  {getRoleLabel(message.sender.role)}: {message.sender.name}
+                                </span>
+                                {message.isRead && message.readAt && (
+                                  <span className="text-xs text-muted-foreground flex-shrink-0">既読</span>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground line-clamp-2">
+                                {preview}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* メッセージ詳細（右側） */}
+              <div className="w-1/2 overflow-y-auto">
+                {selectedMessageId ? (
+                  (() => {
+                    const selectedMessage = messages.find(m => m.id === selectedMessageId);
+                    if (!selectedMessage) return null;
+                    
+                    return (
+                      <div className="p-6">
+                        <div className="mb-6">
+                          <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-lg font-semibold">
+                              {selectedMessage.subject || '(件名なし)'}
+                            </h2>
+                            <button
+                              onClick={() => handleToggleFlag(selectedMessage.id, selectedMessage.isFlagged)}
+                              className="hover:opacity-80 transition-opacity"
+                              type="button"
+                            >
+                              {selectedMessage.isFlagged ? (
+                                <Flag className="w-5 h-5 text-yellow-500" fill="currentColor" />
+                              ) : (
+                                <FlagOff className="w-5 h-5 text-muted-foreground" />
+                              )}
+                            </button>
+                          </div>
+                          
+                          <div className="space-y-2 border-b border-border pb-4 mb-4">
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="font-medium text-muted-foreground">送信者:</span>
+                              <span className="text-foreground">
+                                {getRoleLabel(selectedMessage.sender.role)}: {selectedMessage.sender.name}
+                              </span>
+                              <span className="text-muted-foreground">
+                                &lt;{selectedMessage.sender.email}&gt;
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="font-medium text-muted-foreground">日時:</span>
+                              <span className="text-foreground">
+                                {formatDate(selectedMessage.createdAt)}
+                              </span>
+                              {selectedMessage.isRead && selectedMessage.readAt && (
+                                <span className="text-muted-foreground">既読</span>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                            {selectedMessage.content}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    メッセージを選択してください
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
