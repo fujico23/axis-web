@@ -35,6 +35,8 @@ model User {
   sessions      Session[]
   accounts      Account[]
   client        Client?
+  attorney      Attorney?
+  internalStaff InternalStaff?
   cases         Case[]
 
   @@unique([email])
@@ -122,6 +124,45 @@ model Client {
 
   @@index([customerNumber])
   @@map("clients")
+}
+
+// ============================================
+// スタッフ情報
+// ============================================
+
+model Attorney {
+  id            String   @id @default(cuid())
+  userId        String   @unique @map("user_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // スタッフ番号（将来的に使用）
+  staffNumber   String?  @map("staff_number")
+  
+  // 所属部署・専門分野など（将来的に使用）
+  department    String   @default("") @map("department")
+  specialty     String   @default("") @map("specialty")
+  
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("attorneys")
+}
+
+model InternalStaff {
+  id            String   @id @default(cuid())
+  userId        String   @unique @map("user_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // スタッフ番号（将来的に使用）
+  staffNumber   String?  @map("staff_number")
+  
+  // 所属部署など（将来的に使用）
+  department    String   @default("") @map("department")
+  
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("internal_staff")
 }
 
 // ============================================
