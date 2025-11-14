@@ -3,9 +3,10 @@
 import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BellRing } from "lucide-react";
+import { BellRing, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { useUser } from "@/lib/useUser";
 
 type SortField = "caseNumber" | "title" | "applicant" | "createdAt" | "updatedAt";
@@ -57,6 +58,7 @@ export default function AdminCasesPage() {
   const { user, loading: userLoading } = useUser();
   const [cases, setCases] = useState<CaseItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   // フィルター状態
   const [searchQuery, setSearchQuery] = useState("");
@@ -142,7 +144,29 @@ export default function AdminCasesPage() {
       }
     };
 
+    const fetchUnreadCounts = async () => {
+      try {
+        const response = await fetch("/api/messages", {
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data) {
+            const counts: Record<string, number> = {};
+            (data.data.communications || []).forEach((comm: any) => {
+              counts[comm.caseId] = comm.unreadCount || 0;
+            });
+            setUnreadCounts(counts);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch unread counts:", error);
+      }
+    };
+
     fetchCases();
+    fetchUnreadCounts();
   }, [
     user,
     userLoading,
@@ -378,10 +402,19 @@ export default function AdminCasesPage() {
                 filteredAndSortedCases.map((item) => (
                   <tr key={item.id} className="bg-background/60 hover:bg-muted/50 transition-colors">
                     <td className="whitespace-nowrap px-2 py-3 text-sm text-center">
-                      {/* 通知アイコン（後で実装） */}
+                      {unreadCounts[item.id] > 0 && (
+                        <Circle className="w-2 h-2 fill-red-500 text-red-500" />
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-foreground">
-                      {item.caseNumber}
+                      <div className="flex items-center gap-2">
+                        {unreadCounts[item.id] > 0 && (
+                          <Badge variant="destructive" className="text-xs h-4 px-1.5">
+                            {unreadCounts[item.id]}
+                          </Badge>
+                        )}
+                        <span>{item.caseNumber}</span>
+                      </div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-foreground">
                       {item.title}

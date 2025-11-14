@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useMemo } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { useUser } from "@/lib/useUser";
 
 type SortField = "title" | "status" | "updatedAt";
@@ -55,6 +56,7 @@ export default function ClientCasesPage() {
   const { user, loading: userLoading } = useUser();
   const [cases, setCases] = useState<CaseItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   const [searchQuery, setSearchQuery] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
@@ -114,7 +116,29 @@ export default function ClientCasesPage() {
       }
     };
 
+    const fetchUnreadCounts = async () => {
+      try {
+        const response = await fetch("/api/messages", {
+          credentials: "include",
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data) {
+            const counts: Record<string, number> = {};
+            (data.data.communications || []).forEach((comm: any) => {
+              counts[comm.caseId] = comm.unreadCount || 0;
+            });
+            setUnreadCounts(counts);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch unread counts:", error);
+      }
+    };
+
     fetchCases();
+    fetchUnreadCounts();
   }, [
     user,
     userLoading,
@@ -280,7 +304,9 @@ export default function ClientCasesPage() {
                   {/* 通知列 */}
                 </th>
                 <th className="w-32 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  整理番号
+                  <div className="flex items-center gap-2">
+                    <span>整理番号</span>
+                  </div>
                 </th>
                 <th
                   className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none"
@@ -342,10 +368,19 @@ export default function ClientCasesPage() {
                     className="hover:bg-muted/50 transition-colors"
                   >
                     <td className="px-2 py-4">
-                      {/* 通知アイコン（後で実装） */}
+                      {unreadCounts[caseItem.id] > 0 && (
+                        <Circle className="w-2 h-2 fill-red-500 text-red-500" />
+                      )}
                     </td>
                     <td className="px-4 py-4 text-sm font-medium">
-                      {caseItem.caseNumber}
+                      <div className="flex items-center gap-2">
+                        {unreadCounts[caseItem.id] > 0 && (
+                          <Badge variant="destructive" className="text-xs h-4 px-1.5">
+                            {unreadCounts[caseItem.id]}
+                          </Badge>
+                        )}
+                        <span>{caseItem.caseNumber}</span>
+                      </div>
                     </td>
                     <td className="px-4 py-4">
                       <Link
