@@ -1,21 +1,15 @@
 "use client";
 
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useEffect, useMemo } from "react";
-import { Plus } from "lucide-react";
+import { BellRing } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUser } from "@/lib/useUser";
 
-type SortField = "title" | "status" | "updatedAt";
+type SortField = "caseNumber" | "title" | "applicant" | "createdAt" | "updatedAt";
 type SortDirection = "asc" | "desc";
-
-enum MarkTypeFilter {
-  ALL = "all",
-  TEXT = "TEXT",
-  LOGO = "LOGO",
-}
 
 const STATUS_OPTIONS = [
   { value: "all", label: "すべて" },
@@ -50,22 +44,30 @@ type CaseItem = {
   updatedAt: string;
 };
 
-export default function ClientCasesPage() {
+function formatDate(dateIso: string) {
+  return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(dateIso));
+}
+
+export default function AdminCasesPage() {
   const router = useRouter();
   const { user, loading: userLoading } = useUser();
   const [cases, setCases] = useState<CaseItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // フィルター状態
   const [searchQuery, setSearchQuery] = useState("");
   const [stageFilter, setStageFilter] = useState<string>("all");
-  const [markTypeFilter, setMarkTypeFilter] = useState<MarkTypeFilter>(
-    MarkTypeFilter.ALL,
-  );
-  const [classFilter, setClassFilter] = useState("");
+  const [markTypeFilter, setMarkTypeFilter] = useState<string>("all");
+
+  // ソート状態
   const [sortField, setSortField] = useState<SortField | null>("updatedAt");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
-  // Case一覧を取得
+  // 認証チェックと権限チェック
   useEffect(() => {
     if (userLoading) {
       return;
@@ -76,6 +78,32 @@ export default function ClientCasesPage() {
       return;
     }
 
+    // 管理者権限チェック（ADMIN, INTERNAL_STAFF, ATTORNEY のみアクセス可能）
+    if (
+      user.role !== "ADMIN" &&
+      user.role !== "INTERNAL_STAFF" &&
+      user.role !== "ATTORNEY"
+    ) {
+      router.push("/client/cases");
+      return;
+    }
+  }, [user, userLoading, router]);
+
+  // Case一覧を取得
+  useEffect(() => {
+    if (userLoading || !user) {
+      return;
+    }
+
+    // 権限チェック
+    if (
+      user.role !== "ADMIN" &&
+      user.role !== "INTERNAL_STAFF" &&
+      user.role !== "ATTORNEY"
+    ) {
+      return;
+    }
+
     const fetchCases = async () => {
       setLoading(true);
       try {
@@ -83,11 +111,8 @@ export default function ClientCasesPage() {
         if (stageFilter !== "all") {
           params.set("status", stageFilter);
         }
-        if (markTypeFilter !== MarkTypeFilter.ALL) {
+        if (markTypeFilter !== "all") {
           params.set("trademarkType", markTypeFilter);
-        }
-        if (classFilter) {
-          params.set("classes", classFilter);
         }
         if (searchQuery) {
           params.set("q", searchQuery);
@@ -97,7 +122,7 @@ export default function ClientCasesPage() {
           params.set("sortOrder", sortDirection);
         }
 
-        const response = await fetch(`/api/cases?${params.toString()}`, {
+        const response = await fetch(`/api/admin/cases?${params.toString()}`, {
           credentials: "include",
         });
 
@@ -106,6 +131,9 @@ export default function ClientCasesPage() {
           if (data.success && data.data) {
             setCases(data.data.cases || []);
           }
+        } else if (response.status === 403) {
+          // 権限がない場合はクライアント画面にリダイレクト
+          router.push("/client/cases");
         }
       } catch (error) {
         console.error("Failed to fetch cases:", error);
@@ -121,59 +149,57 @@ export default function ClientCasesPage() {
     router,
     stageFilter,
     markTypeFilter,
-    classFilter,
     searchQuery,
     sortField,
     sortDirection,
   ]);
 
-  // ステータスを日本語ラベルに変換
-  const getStatusLabel = (status: string): string => {
-    const statusMap: Record<string, string> = {
-      DRAFT: "下書き",
-      TRADEMARK_REGISTERED: "新規商標済",
-      PRELIMINARY_RESEARCH_IN_PROGRESS: "事前調査中",
-      RESEARCH_RESULT_SHARED: "調査結果共有",
-      PREPARING_APPLICATION: "出願準備中",
-      APPLICATION_CONFIRMED: "願書確定",
-      APPLICATION_SUBMITTED: "出願受付済",
-      UNDER_EXAMINATION: "審査中",
-      OA_RECEIVED: "OA受領",
-      RESPONDING_TO_OA: "中間対応中",
-      FINAL_RESULT_RECEIVED: "最終結果受領",
-      PAYING_REGISTRATION_FEE: "登録料納付中",
-      REGISTRATION_COMPLETED: "登録完了",
-      AWAITING_RENEWAL: "更新待ち",
-      IN_DISPUTE: "係争中",
-      REJECTED: "拒絶確定",
-      ABANDONED: "放棄",
-    };
-    return statusMap[status] || status;
-  };
-
-  // 商標タイプを日本語に変換
-  const getTrademarkTypeLabel = (type: string): string => {
-    return type === "TEXT" ? "文字" : type === "LOGO" ? "図形" : type;
-  };
-
-  const filteredAndSortedCases = useMemo(() => {
-    return cases;
-  }, [cases]);
-
+  // ソートハンドラー
   const handleSort = (field: SortField) => {
     if (sortField === field) {
+      // 同じフィールドをクリックした場合は方向を切り替え
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
+      // 新しいフィールドの場合は昇順から開始
       setSortField(field);
       setSortDirection("asc");
     }
   };
 
+  // フィルタリング&ソートされた案件リスト
+  const filteredAndSortedCases = useMemo(() => {
+    // API側でフィルタリングとソートが行われているので、そのまま返す
+    return cases;
+  }, [cases]);
+
+  const dateFormatter = (value: string) => formatDate(value);
+
+  // ローディング中または権限チェック中
+  if (userLoading || loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-muted-foreground">読み込み中...</div>
+      </div>
+    );
+  }
+
+  // 権限がない場合は何も表示しない（リダイレクト処理中）
+  if (
+    !user ||
+    (user.role !== "ADMIN" &&
+      user.role !== "INTERNAL_STAFF" &&
+      user.role !== "ATTORNEY")
+  ) {
+    return null;
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-6xl mx-auto">
+      {/* 検索セクション */}
       <div className="p-6 rounded-2xl border border-border bg-card/80">
         <h2 className="text-lg font-semibold mb-4">検索</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* 検索入力 */}
           <div className="space-y-2">
             <label
               htmlFor="search"
@@ -184,12 +210,13 @@ export default function ClientCasesPage() {
             <Input
               id="search"
               type="text"
-              placeholder="整理番号、商標名で検索..."
+              placeholder="整理番号、商標名、出願人で検索..."
               value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
 
+          {/* ステージフィルター */}
           <div className="space-y-2">
             <label
               htmlFor="stage"
@@ -200,8 +227,8 @@ export default function ClientCasesPage() {
             <select
               id="stage"
               value={stageFilter}
-              onChange={(event) => setStageFilter(event.target.value)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              onChange={(e) => setStageFilter(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {STATUS_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -211,6 +238,7 @@ export default function ClientCasesPage() {
             </select>
           </div>
 
+          {/* 商標タイプフィルター */}
           <div className="space-y-2">
             <label
               htmlFor="markType"
@@ -221,47 +249,28 @@ export default function ClientCasesPage() {
             <select
               id="markType"
               value={markTypeFilter}
-              onChange={(event) =>
-                setMarkTypeFilter(event.target.value as MarkTypeFilter)
-              }
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              onChange={(e) => setMarkTypeFilter(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <option value={MarkTypeFilter.ALL}>すべて</option>
-              <option value={MarkTypeFilter.TEXT}>文字</option>
-              <option value={MarkTypeFilter.LOGO}>図形</option>
+              <option value="all">すべて</option>
+              <option value="TEXT">文字</option>
+              <option value="LOGO">図形</option>
             </select>
-          </div>
-
-          <div className="space-y-2">
-            <label
-              htmlFor="classFilter"
-              className="text-sm font-medium text-muted-foreground"
-            >
-              区分
-            </label>
-            <Input
-              id="classFilter"
-              type="text"
-              placeholder="例: 9, 42"
-              value={classFilter}
-              onChange={(event) => setClassFilter(event.target.value)}
-            />
           </div>
         </div>
 
+        {/* 検索結果サマリー */}
         <div className="mt-4 text-sm text-muted-foreground">
           {filteredAndSortedCases.length} 件の案件が見つかりました
           {(searchQuery ||
             stageFilter !== "all" ||
-            markTypeFilter !== MarkTypeFilter.ALL ||
-            classFilter) && (
+            markTypeFilter !== "all") && (
             <button
               type="button"
               onClick={() => {
                 setSearchQuery("");
                 setStageFilter("all");
-                setMarkTypeFilter(MarkTypeFilter.ALL);
-                setClassFilter("");
+                setMarkTypeFilter("all");
               }}
               className="ml-2 text-primary hover:underline"
             >
@@ -271,6 +280,7 @@ export default function ClientCasesPage() {
         </div>
       </div>
 
+      {/* 案件リストテーブル */}
       <div className="rounded-2xl border border-border bg-card/80">
         <div className="overflow-x-auto">
           <table className="w-full table-auto divide-y divide-border">
@@ -279,8 +289,18 @@ export default function ClientCasesPage() {
                 <th className="w-12 px-2 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {/* 通知列 */}
                 </th>
-                <th className="w-32 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  整理番号
+                <th
+                  className="w-32 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none"
+                  onClick={() => handleSort("caseNumber")}
+                >
+                  <div className="flex items-center gap-1">
+                    整理番号
+                    {sortField === "caseNumber" && (
+                      <span className="text-xs">
+                        {sortDirection === "asc" ? "↑" : "↓"}
+                      </span>
+                    )}
+                  </div>
                 </th>
                 <th
                   className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none"
@@ -295,16 +315,39 @@ export default function ClientCasesPage() {
                     )}
                   </div>
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  区分
-                </th>
                 <th
                   className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none"
-                  onClick={() => handleSort("status")}
+                  onClick={() => handleSort("applicant")}
                 >
                   <div className="flex items-center gap-1">
-                    ステータス
-                    {sortField === "status" && (
+                    出願人
+                    {sortField === "applicant" && (
+                      <span className="text-xs">
+                        {sortDirection === "asc" ? "↑" : "↓"}
+                      </span>
+                    )}
+                  </div>
+                </th>
+                <th
+                  className="w-28 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none"
+                  onClick={() => handleSort("createdAt")}
+                >
+                  <div className="flex items-center gap-1">
+                    作成日
+                    {sortField === "createdAt" && (
+                      <span className="text-xs">
+                        {sortDirection === "asc" ? "↑" : "↓"}
+                      </span>
+                    )}
+                  </div>
+                </th>
+                <th
+                  className="w-28 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none"
+                  onClick={() => handleSort("updatedAt")}
+                >
+                  <div className="flex items-center gap-1">
+                    更新日
+                    {sortField === "updatedAt" && (
                       <span className="text-xs">
                         {sortDirection === "asc" ? "↑" : "↓"}
                       </span>
@@ -312,71 +355,50 @@ export default function ClientCasesPage() {
                   </div>
                 </th>
                 <th className="w-28 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  詳細
+                  案件詳細
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {loading ? (
+              {filteredAndSortedCases.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-4 py-8 text-center text-sm text-muted-foreground"
                   >
-                    読み込み中...
-                  </td>
-                </tr>
-              ) : filteredAndSortedCases.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="px-4 py-8 text-center text-sm text-muted-foreground"
-                  >
-                    まだ商標の登録はありません
+                    {cases.length === 0 &&
+                    searchQuery === "" &&
+                    stageFilter === "all" &&
+                    markTypeFilter === "all"
+                      ? "まだ案件が登録されていません"
+                      : "条件に一致する案件が見つかりませんでした"}
                   </td>
                 </tr>
               ) : (
-                filteredAndSortedCases.map((caseItem) => (
-                  <tr
-                    key={caseItem.id}
-                    className="hover:bg-muted/50 transition-colors"
-                  >
-                    <td className="px-2 py-4">
+                filteredAndSortedCases.map((item) => (
+                  <tr key={item.id} className="bg-background/60 hover:bg-muted/50 transition-colors">
+                    <td className="whitespace-nowrap px-2 py-3 text-sm text-center">
                       {/* 通知アイコン（後で実装） */}
                     </td>
-                    <td className="px-4 py-4 text-sm font-medium">
-                      {caseItem.caseNumber}
+                    <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-foreground">
+                      {item.caseNumber}
                     </td>
-                    <td className="px-4 py-4">
-                      <Link
-                        href={`/client/cases/${caseItem.id}`}
-                        className="text-sm font-medium hover:text-primary transition-colors"
-                      >
-                        {caseItem.title}
-                      </Link>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-foreground">
+                      {item.title}
                     </td>
-                    <td className="px-4 py-4 text-sm">
-                      <div className="flex flex-wrap gap-1">
-                        {caseItem.classes.map((classCode) => (
-                          <span
-                            key={classCode}
-                            className="px-2 py-0.5 bg-muted rounded text-xs"
-                          >
-                            第{classCode}類
-                          </span>
-                        ))}
-                      </div>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
+                      {item.applicant}
                     </td>
-                    <td className="px-4 py-4 text-sm">
-                      {getStatusLabel(caseItem.status)}
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
+                      {dateFormatter(item.createdAt)}
                     </td>
-                    <td className="px-4 py-4">
-                      <Link
-                        href={`/client/cases/${caseItem.id}`}
-                        className="text-sm text-primary hover:underline"
-                      >
-                        詳細
-                      </Link>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
+                      {dateFormatter(item.updatedAt)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={`/admin/cases/${item.id}`}>開く</Link>
+                      </Button>
                     </td>
                   </tr>
                 ))
@@ -385,16 +407,6 @@ export default function ClientCasesPage() {
           </table>
         </div>
       </div>
-
-      <Link
-        href="/client/cases/new"
-        className="fixed bottom-8 right-8 z-50 group"
-      >
-        <div className="w-20 h-20 flex flex-col items-center justify-center rounded-2xl bg-gradient-to-br from-[#FD9731] to-[#f57c00] shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-110 hover:from-[#f57c00] hover:to-[#FD9731]">
-          <Plus className="w-8 h-8 text-white font-bold" strokeWidth={3} />
-          <span className="text-white font-bold text-xs mt-1">新規商標</span>
-        </div>
-      </Link>
     </div>
   );
 }

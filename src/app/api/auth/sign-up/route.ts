@@ -2,7 +2,7 @@ import { APIError } from "better-auth";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { generateCustomerIdentifier } from "@/lib/number-generator";
+import { generateCustomerNumber } from "@/lib/number-generator";
 
 type ErrorCode =
   | "AUTH_001"
@@ -177,12 +177,12 @@ export async function POST(request: Request) {
     });
 
     // Clientレコードを自動作成
-    const customerIdentifier = await generateCustomerIdentifier();
+    const customerNumber = await generateCustomerNumber();
     
     await prisma.client.create({
       data: {
         userId: signUpResult.response.user.id,
-        customerIdentifier,
+        customerNumber,
       },
     });
 

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { User, Plus, Mail, ChevronDown, LogOut, UserCircle, Shield, FileText, Users } from "lucide-react";
+import { User, Mail, ChevronDown, LogOut, UserCircle, Shield, FileText, Users } from "lucide-react";
 import { useUser } from "@/lib/useUser";
 
 const getSidebarItems = (userRole: string | undefined) => {
@@ -41,7 +41,7 @@ const getSidebarItems = (userRole: string | undefined) => {
   return items;
 };
 
-export default function ClientLayout({
+export default function AdminCasesLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
@@ -104,22 +104,10 @@ export default function ClientLayout({
     <div className="min-h-screen flex flex-col">
       <header className="fixed top-0 left-0 right-0 z-50 border-b border-[#8EBA43]/30 dark:border-[#4d9731]/40 bg-gradient-to-r from-[#4d9731] to-[#8EBA43] dark:from-[#4d9731] dark:to-[#2A3132] backdrop-blur shadow-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <Link
-            href="/client"
-            className="font-bold text-xl tracking-tight text-white hover:text-white/90 transition-all duration-300"
-          >
-            スマート商標.com
-          </Link>
+          <div className="font-bold text-xl tracking-tight text-white">
+            管理者ポータル
+          </div>
           <div className="flex items-center gap-4">
-            {/* 新規商標リンク */}
-            <Link
-              href="/client/cases/new"
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-[#FD9731] to-[#f57c00] hover:from-[#f57c00] hover:to-[#FD9731] text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all duration-300 hover:scale-105"
-            >
-              <Plus className="w-4 h-4" strokeWidth={2.5} />
-              新規商標
-            </Link>
-            
             {/* ユーザーメニュー */}
             <div className="relative" ref={dropdownRef}>
               <button
@@ -210,7 +198,7 @@ export default function ClientLayout({
           </div>
         </div>
       </header>
-      <div className="flex-1 flex bg-gradient-to-br from-[#8EBA43]/5 via-white to-[#4d9731]/5 dark:from-[#2A3132] dark:via-[#2A3132]/95 dark:to-[#4d9731]/10 pt-[73px]">
+      <div className="flex-1 flex bg-gradient-to-br from-[#8EBA43]/5 via-white to-[#4d9731]/5 dark:from-[#2A3132] dark:from-[#2A3132]/95 dark:to-[#4d9731]/10 pt-[73px]">
         {/* サイドバー */}
         <aside className="fixed top-[73px] left-0 bottom-0 w-56 border-r border-[#8EBA43]/30 dark:border-[#4d9731]/40 bg-white/80 dark:bg-[#2A3132]/80 backdrop-blur overflow-y-auto">
           <nav className="p-4 space-y-2">
